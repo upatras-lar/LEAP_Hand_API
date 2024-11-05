@@ -10,8 +10,10 @@ import numpy as np
 PROTOCOL_VERSION = 2.0
 
 # The following addresses assume XH motors.
+ADDR_OPERATING_MODE = 11
 ADDR_TORQUE_ENABLE = 64
 ADDR_GOAL_POSITION = 116
+ADDR_GOAL_VELOCITY = 104
 ADDR_PRESENT_POSITION = 132
 ADDR_PRESENT_VELOCITY = 128
 ADDR_PRESENT_CURRENT = 126
@@ -23,6 +25,7 @@ LEN_PRESENT_VELOCITY = 4
 LEN_PRESENT_CURRENT = 2
 LEN_PRESENT_POS_VEL_CUR = 10
 LEN_GOAL_POSITION = 4
+LEN_GOAL_VELOCITY = 4
 
 DEFAULT_POS_SCALE = 2.0 * np.pi / 4096  # 0.088 degrees
 # See http://emanual.robotis.com/docs/en/dxl/x/xh430-v210/#goal-velocity
@@ -65,6 +68,10 @@ class DynamixelClient:
 
     # The currently open clients.
     OPEN_CLIENTS = set()
+
+    VELOCITY_MODE = 1
+    POSITION_MODE = 5
+    DEFAULT_OPERATING_MODE = POSITION_MODE
 
     def __init__(self,
                  motor_ids: Sequence[int],
@@ -207,6 +214,37 @@ class DynamixelClient:
             time.sleep(retry_interval)
             retries -= 1
 
+    def set_operating_mode(self,
+                           motor_ids: Sequence[int],
+                           modes: Sequence[int],
+                           retries: int = -1,
+                           retry_interval: float = 0.25):
+        """Sets whether torque is enabled for the motors.
+
+        Args:
+            motor_ids: The motor IDs to configure.
+            enabled: Whether to engage or disengage the motors.
+            retries: The number of times to retry. If this is <0, will retry
+                forever.
+            retry_interval: The number of seconds to wait between retries.
+        """
+        remaining_ids = list(motor_ids)
+        remaining_modes = list(modes)
+        while remaining_ids:
+            remaining_ids, remaining_modes = self.write_bytes(
+                remaining_ids,
+                remaining_modes,
+                ADDR_OPERATING_MODE,
+            )
+            if remaining_ids:
+                logging.error('Could not set operating mode %s for IDs: %s',
+                              str(remaining_modes),
+                              str(remaining_ids))
+            if retries == 0:
+                break
+            time.sleep(retry_interval)
+            retries -= 1
+
     def read_pos_vel_cur(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Returns the current positions and velocities."""
         return self._pos_vel_cur_reader.read()
@@ -234,6 +272,54 @@ class DynamixelClient:
         positions = positions / self._pos_vel_cur_reader.pos_scale
         self.sync_write(motor_ids, positions, ADDR_GOAL_POSITION,
                         LEN_GOAL_POSITION)
+
+    def write_desired_vel(self, motor_ids: Sequence[int],
+                          velocities: np.ndarray):
+        """Writes the given desired velocities.
+
+        Args:
+            motor_ids: The motor IDs to write to.
+            velocities: The joint angles in radians/s to write.
+        """
+        assert len(motor_ids) == len(velocities)
+
+        # Convert to Dynamixel position space.
+        velocities = velocities / self._pos_vel_cur_reader.vel_scale
+        self.sync_write(motor_ids, velocities, ADDR_GOAL_VELOCITY,
+                        LEN_GOAL_VELOCITY)
+
+    def write_bytes(
+            self,
+            motor_ids: Sequence[int],
+            values: Sequence[int],
+            address: int,
+    ) -> (Sequence[int], Sequence[int]):
+        """Writes values to the motors.
+
+        Args:
+            motor_ids: The motor IDs to write to.
+            values: The values to write to the control table.
+            address: The control table address to write to.
+
+        Returns:
+            A list of IDs that were unsuccessful.
+        """
+        assert(len(motor_ids) == len(values))
+        self.check_connected()
+        errored_ids = []
+        errored_values = []
+        # for motor_id in motor_ids:
+        for i in range(len(motor_ids)):
+            motor_id = motor_ids[i]
+            value = values[i]
+            comm_result, dxl_error = self.packet_handler.write1ByteTxRx(
+                self.port_handler, motor_id, address, value)
+            success = self.handle_packet_result(
+                comm_result, dxl_error, motor_id, context='write_byte')
+            if not success:
+                errored_ids.append(motor_id)
+                errored_values.append(value)
+        return errored_ids, errored_values
 
     def write_byte(
             self,

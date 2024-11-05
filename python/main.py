@@ -20,7 +20,7 @@ I recommend you only query when necessary and below 90 samples a second.  Each o
 """
 ########################################################
 class LeapNode:
-    def __init__(self):
+    def __init__(self, mode = "position"):
         ####Some parameters
         # self.ema_amount = float(rospy.get_param('/leaphand_node/ema', '1.0')) #take only current
         self.kP = 600
@@ -42,7 +42,9 @@ class LeapNode:
                 self.dxl_client = DynamixelClient(motors, 'COM13', 4000000)
                 self.dxl_client.connect()
         #Enables position-current control mode and the default parameters, it commands a position and then caps the current so the motors don't overload
-        self.dxl_client.sync_write(motors, np.ones(len(motors))*5, 11, 1)
+        # set position
+        self.set_mode(mode)
+        # self.dxl_client.sync_write(motors, np.ones(len(motors))*5, 11, 1)
         self.dxl_client.set_torque_enabled(motors, True)
         self.dxl_client.sync_write(motors, np.ones(len(motors)) * self.kP, 84, 2) # Pgain stiffness     
         self.dxl_client.sync_write([0,4,8], np.ones(3) * (self.kP * 0.75), 84, 2) # Pgain stiffness for side to side should be a bit less
@@ -53,6 +55,14 @@ class LeapNode:
         self.dxl_client.sync_write(motors, np.ones(len(motors)) * self.curr_lim, 102, 2)
         self.dxl_client.write_desired_pos(self.motors, self.curr_pos)
 
+    #set mode
+    def set_mode(self, mode = "position"):
+        if mode == "position":
+            self.dxl_client.set_operating_mode(self.motors, [self.dxl_client.POSITION_MODE] * len(self.motors))
+        elif mode == "velocity":
+            self.dxl_client.set_operating_mode(self.motors, [self.dxl_client.VELOCITY_MODE] * len(self.motors))
+        else:
+            self.dxl_client.set_operating_mode(self.motors, [self.dxl_client.DEFAULT_OPERATING_MODE] * len(self.motors))
     #Receive LEAP pose and directly control the robot
     def set_leap(self, pose):
         self.prev_pos = self.curr_pos
@@ -70,6 +80,10 @@ class LeapNode:
         self.prev_pos = self.curr_pos
         self.curr_pos = np.array(pose)
         self.dxl_client.write_desired_pos(self.motors, self.curr_pos)
+    #velocity control
+    def set_velocity(self, vel):
+        self.curr_vel = np.array(vel)
+        self.dxl_client.write_desired_vel(self.motors, self.curr_vel)
     #read position
     def read_pos(self):
         return self.dxl_client.read_pos()
@@ -81,9 +95,11 @@ class LeapNode:
         return self.dxl_client.read_cur()
 #init the node
 def main(**kwargs):
-    leap_hand = LeapNode()
+    mode = "velocity"
+    leap_hand = LeapNode(mode)
     while True:
-        leap_hand.set_allegro(np.zeros(16))
+        # leap_hand.set_allegro(np.zeros(16))
+        leap_hand.set_velocity(np.ones(16) * 0.05)
         print("Position: " + str(leap_hand.read_pos()))
         time.sleep(0.03)
 
