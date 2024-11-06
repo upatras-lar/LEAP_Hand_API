@@ -45,6 +45,9 @@ class LeapNode:
         # set position
         self.set_mode(mode)
         # self.dxl_client.sync_write(motors, np.ones(len(motors))*5, 11, 1)
+        self.dxl_client.set_drive_mode(motors, 1) # 1 -- time-based profile
+        self.dxl_client.set_velocity_profile(motors, 0)
+        self.dxl_client.set_acceleration_profile(motors, 0)
         self.dxl_client.set_torque_enabled(motors, True)
         self.dxl_client.sync_write(motors, np.ones(len(motors)) * self.kP, 84, 2) # Pgain stiffness     
         self.dxl_client.sync_write([0,4,8], np.ones(3) * (self.kP * 0.75), 84, 2) # Pgain stiffness for side to side should be a bit less
