@@ -22,6 +22,7 @@ ADDR_PRESENT_POS_VEL_CUR = 126
 ADDR_DRIVE_MODE = 10
 ADDR_PROFILE_VELOCITY = 112
 ADDR_PROFILE_ACCELERATION = 108
+LEN_PROFILE = 4
 
 # Data Byte Length
 LEN_PRESENT_POSITION = 4
@@ -223,63 +224,25 @@ class DynamixelClient:
 
     def set_velocity_profile(self,
                              motor_ids: Sequence[int],
-                             value: int,
-                             retries: int = -1,
-                             retry_interval: float = 0.25):
+                             value: int):
         """Sets velocity profiles for the motors.
 
         Args:
             motor_ids: The motor IDs to configure.
             value: Value for velocity profile
-            retries: The number of times to retry. If this is <0, will retry
-                forever.
-            retry_interval: The number of seconds to wait between retries.
         """
-        remaining_ids = list(motor_ids)
-        while remaining_ids:
-            remaining_ids = self.write_byte(
-                remaining_ids,
-                value,
-                ADDR_PROFILE_VELOCITY,
-            )
-            if remaining_ids:
-                logging.error('Could not set drive mode %s for IDs: %s',
-                              str(mode),
-                              str(remaining_ids))
-            if retries == 0:
-                break
-            time.sleep(retry_interval)
-            retries -= 1
+        self.sync_write(motor_ids, [value] * len(motor_ids), ADDR_PROFILE_VELOCITY, LEN_PROFILE)
 
     def set_acceleration_profile(self,
                                  motor_ids: Sequence[int],
-                                 value: int,
-                                 retries: int = -1,
-                                 retry_interval: float = 0.25):
+                                 value: int):
         """Sets acceleration profiles for the motors.
 
         Args:
             motor_ids: The motor IDs to configure.
             value: Value for acceleration profile
-            retries: The number of times to retry. If this is <0, will retry
-                forever.
-            retry_interval: The number of seconds to wait between retries.
         """
-        remaining_ids = list(motor_ids)
-        while remaining_ids:
-            remaining_ids = self.write_byte(
-                remaining_ids,
-                value,
-                ADDR_PROFILE_ACCELERATION,
-            )
-            if remaining_ids:
-                logging.error('Could not set drive mode %s for IDs: %s',
-                              str(mode),
-                              str(remaining_ids))
-            if retries == 0:
-                break
-            time.sleep(retry_interval)
-            retries -= 1
+        self.sync_write(motor_ids, [value] * len(motor_ids), ADDR_PROFILE_ACCELERATION, LEN_PROFILE)
 
     def set_torque_enabled(self,
                            motor_ids: Sequence[int],
